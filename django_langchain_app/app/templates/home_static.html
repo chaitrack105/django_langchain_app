@@ -1,0 +1,844 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% load markdownify %}
+
+{% block title %}Lead Intelligence Dashboard - Product Manager{% endblock %}
+
+{% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+  }
+
+  .pm-dashboard {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 450px;
+    gap: 24px;
+    min-height: calc(100vh - 40px);
+  }
+
+  /* Left Panel - Analytics Dashboard */
+  .analytics-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .dashboard-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  }
+
+  .dashboard-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+
+  .dashboard-subtitle {
+    opacity: 0.9;
+    margin: 0 0 20px 0;
+    font-size: 1rem;
+  }
+
+  .quick-filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .filter-btn:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateY(-2px);
+  }
+
+  .filter-btn.active {
+    background: rgba(255,255,255,0.9);
+    color: #667eea;
+  }
+
+  /* Metrics Grid */
+  .metrics-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .metric-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid rgba(255,255,255,0.8);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+  }
+
+  .metric-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  }
+
+  .metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
+  .metric-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0;
+  }
+
+  .metric-icon {
+    font-size: 1.5rem;
+  }
+
+  .priority-high { color: #ef4444; }
+  .priority-medium { color: #f59e0b; }
+  .priority-low { color: #10b981; }
+
+  .lead-list {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .lead-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  .lead-item:last-child {
+    border-bottom: none;
+  }
+
+  .lead-info h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    color: #1f2937;
+  }
+
+  .lead-info p {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .lead-score {
+    text-align: right;
+  }
+
+  .score-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .score-label {
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .view-all-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #667eea;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-top: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .view-all-link:hover {
+    color: #4f46e5;
+    text-decoration: none;
+    transform: translateX(2px);
+  }
+
+  /* Right Panel - Chat Interface */
+  .chat-panel {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    height: fit-content;
+    max-height: calc(100vh - 40px);
+    overflow: hidden;
+  }
+
+  .chat-header {
+    background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .chat-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+  }
+
+  .chat-subtitle {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    margin: 0;
+  }
+
+  .quick-prompts {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  .prompt-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .prompt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .prompt-chip {
+    background: #e0e7ff;
+    color: #3730a3;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .prompt-chip:hover {
+    background: #3730a3;
+    color: white;
+    transform: translateY(-1px);
+  }
+
+  .chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    max-height: 400px;
+    min-height: 300px;
+  }
+
+  .message {
+    margin-bottom: 16px;
+  }
+
+  .message-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .sender-badge {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+
+  .sender-human {
+    background: #3730a3;
+    color: white;
+  }
+
+  .sender-ai {
+    background: #10b981;
+    color: white;
+  }
+
+  .message-time {
+    font-size: 0.7rem;
+    color: #6b7280;
+  }
+
+  .message-bubble {
+    background: #f3f4f6;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    position: relative;
+  }
+
+  .message-bubble.human {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    margin-left: 20px;
+  }
+
+  .message-bubble.ai {
+    background: #d1fae5;
+    border-color: #86efac;
+    margin-right: 20px;
+  }
+
+  .message-content {
+    margin: 0;
+    line-height: 1.5;
+    font-size: 0.9rem;
+  }
+
+  .message-content p {
+    margin: 0 0 8px 0;
+  }
+
+  .message-content p:last-child {
+    margin-bottom: 0;
+  }
+
+  .chat-input-section {
+    padding: 20px;
+    border-top: 1px solid #e5e7eb;
+    background: white;
+    border-radius: 0 0 16px 16px;
+  }
+
+  .input-container {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+  }
+
+  .chat-textarea {
+    flex: 1;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    resize: none;
+    min-height: 44px;
+    max-height: 120px;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+  }
+
+  .chat-textarea:focus {
+    outline: none;
+    border-color: #3730a3;
+    box-shadow: 0 0 0 3px rgba(55, 48, 163, 0.1);
+  }
+
+  .send-button {
+    background: linear-gradient(135deg, #3730a3 0%, #1e40af 100%);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    min-width: 80px;
+  }
+
+  .send-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(55, 48, 163, 0.3);
+  }
+
+  .send-button:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 1200px) {
+    .pm-dashboard {
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    
+    .chat-panel {
+      max-height: 600px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .pm-dashboard {
+      padding: 10px;
+      gap: 16px;
+    }
+    
+    .metrics-container {
+      grid-template-columns: 1fr;
+    }
+    
+    .quick-filters {
+      flex-direction: column;
+    }
+    
+    .filter-btn {
+      justify-content: center;
+    }
+  }
+
+  /* Scrollbar Styling */
+  .chat-messages::-webkit-scrollbar,
+  .lead-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .chat-messages::-webkit-scrollbar-track,
+  .lead-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+
+  .chat-messages::-webkit-scrollbar-thumb,
+  .lead-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+
+  .chat-messages::-webkit-scrollbar-thumb:hover,
+  .lead-list::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+  }
+</style>
+
+<div class="pm-dashboard">
+  <!-- Left Panel - Analytics Dashboard -->
+  <div class="analytics-panel">
+    <!-- Dashboard Header -->
+    <div class="dashboard-header">
+      <h1 class="dashboard-title">🎯 Product Manager Dashboard</h1>
+      <p class="dashboard-subtitle">Real-time lead intelligence and performance analytics</p>
+      
+      <div class="quick-filters">
+        <button class="filter-btn active" onclick="loadLeadData('all')">📊 All Leads</button>
+        <button class="filter-btn" onclick="loadLeadData('active')">🔥 Active</button>
+        <button class="filter-btn" onclick="loadLeadData('high-intent')">⚡ High Intent</button>
+        <button class="filter-btn" onclick="loadLeadData('at-risk')">⚠️ At Risk</button>
+        <button class="filter-btn" onclick="loadLeadData('meetings')">📅 Meetings</button>
+      </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="metrics-container">
+      <!-- High Priority Leads -->
+      <div class="metric-card">
+        <div class="metric-header">
+          <h3 class="metric-title">🚨 High Priority Leads</h3>
+          <span class="metric-icon priority-high">⭐</span>
+        </div>
+        
+        <div class="lead-list">
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>TechCorp Solutions</h4>
+              <p>ERV Active • ₹5.2Cr • Meeting Tomorrow</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-high">4.8</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>Global Manufacturing</h4>
+              <p>NCA Hot • ₹8.1Cr • Intent: 92</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-high">4.6</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>Innovation Enterprises</h4>
+              <p>ERV Winback • ₹3.8Cr • Last: 2 days</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-high">4.4</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+        </div>
+        
+        <a href="#" class="view-all-link" onclick="insertPrompt('Show detailed analysis of top 10 priority leads with action items'); return false;">
+          View All Priority Leads →
+        </a>
+      </div>
+
+      <!-- Performance Metrics -->
+      <div class="metric-card">
+        <div class="metric-header">
+          <h3 class="metric-title">📊 Today's Performance</h3>
+          <span class="metric-icon priority-low">📈</span>
+        </div>
+        
+        <div class="lead-list">
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>New Leads Processed</h4>
+              <p>Across all beat plans</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">47</p>
+              <p class="score-label">Today</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>Average Lead Score</h4>
+              <p>Quality indicator</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-medium">3.2</p>
+              <p class="score-label">Avg Score</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>Conversion Rate</h4>
+              <p>This week vs last week</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">+12%</p>
+              <p class="score-label">Change</p>
+            </div>
+          </div>
+        </div>
+        
+        <a href="#" class="view-all-link" onclick="insertPrompt('Generate comprehensive performance dashboard for this week'); return false;">
+          View Full Analytics →
+        </a>
+      </div>
+
+      <!-- At-Risk Leads -->
+      <div class="metric-card">
+        <div class="metric-header">
+          <h3 class="metric-title">⚠️ Needs Attention</h3>
+          <span class="metric-icon priority-medium">🔔</span>
+        </div>
+        
+        <div class="lead-list">
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>DataSync Corp</h4>
+              <p>ERV Dormant • ₹6.5Cr • 14 days silent</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">2.1</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>FlexiSystems Inc</h4>
+              <p>NCA Warm • ₹4.2Cr • Intent dropping</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">1.9</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>MetroLogistics</h4>
+              <p>ERV Active • ₹2.8Cr • Missed meetings</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-medium">2.8</p>
+              <p class="score-label">Score</p>
+            </div>
+          </div>
+        </div>
+        
+        <a href="#" class="view-all-link" onclick="insertPrompt('Show at-risk leads with recovery strategies and action plans'); return false;">
+          Recovery Actions →
+        </a>
+      </div>
+
+      <!-- AI Insights -->
+      <div class="metric-card">
+        <div class="metric-header">
+          <h3 class="metric-title">💡 AI Recommendations</h3>
+          <span class="metric-icon priority-low">🤖</span>
+        </div>
+        
+        <div class="lead-list">
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>ERV Active Segment</h4>
+              <p>38% higher conversion this week</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">↗️</p>
+              <p class="score-label">Trend</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>NCA Cold Pipeline</h4>
+              <p>Consider nurturing campaign</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-medium">💡</p>
+              <p class="score-label">Insight</p>
+            </div>
+          </div>
+          
+          <div class="lead-item">
+            <div class="lead-info">
+              <h4>High-Value Prospects</h4>
+              <p>₹50Cr+ showing strong signals</p>
+            </div>
+            <div class="lead-score">
+              <p class="score-value priority-low">🎯</p>
+              <p class="score-label">Opportunity</p>
+            </div>
+          </div>
+        </div>
+        
+        <a href="#" class="view-all-link" onclick="insertPrompt('What are the strategic insights and recommendations for optimizing our lead pipeline?'); return false;">
+          Strategic Insights →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel - Chat Interface -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <h2 class="chat-title">🤖 AI Lead Assistant</h2>
+      <p class="chat-subtitle">Advanced analytics and intelligent recommendations</p>
+    </div>
+
+    <div class="quick-prompts">
+      <span class="prompt-label">Quick Actions:</span>
+      <div class="prompt-chips">
+        <button class="prompt-chip" onclick="insertPrompt('Score this lead: NCA Hot, ₹15Cr turnover, 89 intent score, meeting next week')">💯 Score Lead</button>
+        <button class="prompt-chip" onclick="insertPrompt('Which leads should I prioritize today based on urgency and value?')">🎯 Daily Priorities</button>
+        <button class="prompt-chip" onclick="insertPrompt('Show conversion funnel analysis by beat plan category')">📊 Funnel Analysis</button>
+        <button class="prompt-chip" onclick="insertPrompt('Generate territory performance report with recommendations')">🗺️ Territory Report</button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      {% for msg in chat_history %}
+        <div class="message">
+          <div class="message-header">
+            <span class="sender-badge {% if msg.sender == 'human' %}sender-human{% else %}sender-ai{% endif %}">
+              {% if msg.sender == 'human' %}👤 You{% else %}🤖 AI{% endif %}
+            </span>
+            <span class="message-time">{{ msg.timestamp|date:"H:i" }}</span>
+          </div>
+          <div class="message-bubble {% if msg.sender == 'human' %}human{% else %}ai{% endif %}">
+            <div class="message-content">{{ msg.text|markdownify }}</div>
+          </div>
+        </div>
+      {% empty %}
+        <div class="message">
+          <div class="message-header">
+            <span class="sender-badge sender-ai">🤖 AI</span>
+            <span class="message-time">Now</span>
+          </div>
+          <div class="message-bubble ai">
+            <div class="message-content">
+              <p><strong>Welcome to your Product Manager Dashboard!</strong></p>
+              <p>I'm your AI assistant specialized in lead intelligence. I can help you:</p>
+              <ul>
+                <li><strong>Lead Scoring:</strong> Evaluate prospects with ML-powered algorithms</li>
+                <li><strong>Pipeline Analysis:</strong> Identify bottlenecks and opportunities</li>
+                <li><strong>Performance Metrics:</strong> Track KPIs and conversion trends</li>
+                <li><strong>Risk Assessment:</strong> Flag at-risk leads and suggest actions</li>
+                <li><strong>Strategic Insights:</strong> Get data-driven recommendations</li>
+              </ul>
+              <p>Click any metric card or use the quick actions above to get started!</p>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="chat-input-section">
+      <form method="post" id="chatForm">
+        {% csrf_token %}
+        <div class="input-container">
+          <textarea 
+            name="user_input" 
+            id="chatInput"
+            class="chat-textarea" 
+            placeholder="Ask about lead scoring, performance analysis, or strategic insights... (Shift+Enter for new line)"
+            rows="1"
+          ></textarea>
+          <button type="submit" class="send-button" id="sendBtn">
+            Send 📤
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Enhanced JavaScript functionality
+const chatInput = document.getElementById('chatInput');
+const chatMessages = document.getElementById('chatMessages');
+const chatForm = document.getElementById('chatForm');
+const sendBtn = document.getElementById('sendBtn');
+
+// Auto-resize textarea
+if (chatInput) {
+  chatInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+}
+
+// Insert prompt function
+function insertPrompt(prompt) {
+  if (chatInput) {
+    chatInput.value = prompt;
+    chatInput.focus();
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  }
+}
+
+// Load lead data (placeholder for future AJAX functionality)
+function loadLeadData(type) {
+  // Remove active class from all buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+  
+  // Add active class to clicked button
+  event.target.classList.add('active');
+  
+  // Insert corresponding prompt
+  const prompts = {
+    'all': 'Show comprehensive lead overview with all categories and scores',
+    'active': 'Display all active leads with high engagement scores',
+    'high-intent': 'Show leads with intent scores above 80 and buying signals',
+    'at-risk': 'Identify at-risk leads requiring immediate intervention',
+    'meetings': 'Show leads with scheduled meetings and preparation insights'
+  };
+  
+  insertPrompt(prompts[type]);
+}
+
+// Auto-scroll chat messages
+function scrollToBottom() {
+  if (chatMessages) {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
+
+// Form submission handling
+if (chatForm) {
+  chatForm.addEventListener('submit', function(e) {
+    const input = chatInput.value.trim();
+    
+    if (!input) {
+      e.preventDefault();
+      return;
+    }
+    
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = 'Sending... ⏳';
+    }
+  });
+}
+
+// Enter key handling
+if (chatInput) {
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (chatForm) {
+        chatForm.submit();
+      }
+    }
+  });
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  scrollToBottom();
+  
+  // Re-enable send button if needed
+  if (sendBtn) {
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = 'Send 📤';
+  }
+});
+
+// Smooth animations for metric cards
+document.querySelectorAll('.metric-card').forEach(card => {
+  card.addEventListener('mouseenter', function() {
+    this.style.transform = 'translateY(-4px) scale(1.02)';
+  });
+  
+  card.addEventListener('mouseleave', function() {
+    this.style.transform = 'translateY(0) scale(1)';
+  });
+});
+</script>
+{% endblock %}

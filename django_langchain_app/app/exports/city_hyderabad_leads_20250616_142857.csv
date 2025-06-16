@@ -1,0 +1,7 @@
+id,Prospect_ID,primary_number,Address,Annual_Turnover_Cr,Beat_Tag,Profile_Score,Intent_Score,product_interested_in,pincode,constitution,Export_Timestamp
+11,abc010,6206744110,"Infotech Park, Hyderabad",Rs. 100cr - Rs.500cr,New Lead,67,91,"Wire Rod, HR Sheet",500001,pvt ltd,2025-06-16 14:28:57
+14,abc013,6206744113,"Banjara Hills, Hyderabad",Rs. 100cr - Rs.500cr,ERV win back,66,82,"HR Sheet, Wire Rod",500034,pvt ltd,2025-06-16 14:28:57
+27,abc026,6206744126,"Hitech City, Hyderabad",Rs. 500cr - Rs.1000cr,Active,74,93,"Steel Coil, Wire Rod",500081,proprietorship,2025-06-16 14:28:57
+111,abc050,6206744150,"Begumpet, Hyderabad",Rs. 50cr - Rs.100cr,New Lead,43,62,"Cement, Wire Rod",500016,proprietorship,2025-06-16 14:28:57
+141,abc080,6206744180,"Panjagutta, Hyderabad",Rs. 500cr - Rs.1000cr,Dormant,69,92,"HR Sheet, TMT Bar",500082,proprietorship,2025-06-16 14:28:57
+155,abc095,6206744195,"Jubilee Hills, Hyderabad",Rs. 50cr - Rs.100cr,Dormant,59,75,"Steel Coil, Wire Rod",500033,proprietorship,2025-06-16 14:28:57

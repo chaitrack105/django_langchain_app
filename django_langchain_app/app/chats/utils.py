@@ -1,4 +1,4 @@
-# utils.py - Enhanced with MySQL Integration and Comprehensive Lead Scoring
+# utils.py - Enhanced with MySQL Integration, Comprehensive Lead Scoring, and CSV Download
 
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -18,6 +18,11 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
+import pandas as pd
+import io
+import csv
+import platform
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,6 +42,134 @@ YOUR_GOOGLE_API_KEY = os.getenv('YOUR_GOOGLE_API_KEY')
 
 # Database configuration from environment
 DB_CONFIG = DatabaseConfig.from_env()
+
+class CSVExportManager:
+    """Manages CSV export functionality for lead data"""
+    
+    def __init__(self):
+        self.export_directory = self.get_downloads_folder()
+        self.ensure_export_directory()       
+    
+
+    def get_downloads_folder(self):
+        """Get the system's Downloads folder path"""
+        try:
+            # For Windows
+            if platform.system() == "Windows":
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders") as key:
+                    downloads_path = winreg.QueryValueEx(key, "{374DE290-123F-4565-9164-39C4925E467B}")[0]
+                    return downloads_path
+            
+            # For macOS and Linux
+            else:
+                home = Path.home()
+                downloads_path = home / "Downloads"
+                return str(downloads_path)
+                
+        except Exception as e:
+            print(f"Could not find Downloads folder: {e}")
+            # Fallback to user home directory
+            return str(Path.home() / "Downloads")
+    
+    def ensure_export_directory(self):
+        """Ensure export directory exists"""
+        if not os.path.exists(self.export_directory):
+            os.makedirs(self.export_directory)
+    
+    def export_leads_to_csv(self, leads_data: List[Dict], filename: str = None) -> str:
+        """Export leads data to CSV file"""
+        if not leads_data:
+            return None
+        
+        # Generate filename if not provided
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"leads_export_{timestamp}.csv"
+        
+        # Ensure .csv extension
+        if not filename.endswith('.csv'):
+            filename += '.csv'
+        
+        filepath = os.path.join(self.export_directory, filename)
+        
+        # Convert to DataFrame and export
+        df = pd.DataFrame(leads_data)
+        
+        # Clean and format the data for better CSV output
+        df = self.clean_dataframe_for_export(df)
+        
+        # Export to CSV
+        df.to_csv(filepath, index=False, encoding='utf-8')
+        
+        return filepath
+    
+    def clean_dataframe_for_export(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and format DataFrame for CSV export"""
+        # Flatten nested dictionaries
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                try:
+                    # Check if column contains dictionaries
+                    if any(isinstance(x, dict) for x in df[col].dropna()):
+                        # Flatten dictionary columns
+                        for idx, value in df[col].items():
+                            if isinstance(value, dict):
+                                df.loc[idx, col] = str(value)
+                except:
+                    pass
+        
+        # Rename columns to be more user-friendly
+        column_mapping = {
+            'prospectId': 'Prospect_ID',
+            'beat_tag': 'Beat_Tag',
+            'turnover': 'Annual_Turnover_Cr',
+            'lead_intent_score': 'Intent_Score',
+            'lead_profile_score': 'Profile_Score',
+            'address': 'Address',
+            'predicted_score': 'AI_Predicted_Score',
+            'priority_level': 'Priority_Level'
+        }
+        
+        df = df.rename(columns=column_mapping)
+        
+        # Add timestamp
+        df['Export_Timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        return df
+    
+    def create_csv_download_response(self, leads_data: List[Dict], query_type: str, criteria: Dict = None) -> Dict:
+        """Create response with CSV download information"""
+        if not leads_data:
+            return {
+                "status": "error",
+                "message": "No data to export",
+                "csv_path": None
+            }
+        
+        # Generate descriptive filename
+        query_clean = query_type.lower().replace(' ', '_').replace('leads', '')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{query_clean}_leads_{timestamp}.csv"
+        
+        # Export to CSV
+        csv_path = self.export_leads_to_csv(leads_data, filename)
+        
+        if csv_path:
+            return {
+                "status": "success",
+                "message": f"CSV file created: {filename}",
+                "csv_path": csv_path,
+                "record_count": len(leads_data),
+                "filename": filename
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to create CSV file",
+                "csv_path": None
+            }
 
 class LeadScoringEngine:
     """Enhanced lead scoring engine with beat tags and ranking logic"""
@@ -352,6 +485,9 @@ class ContextAwareAssistant:
         # Initialize lead scoring engine
         self.lead_scorer = LeadScoringEngine()
         
+        # Initialize CSV export manager
+        self.csv_manager = CSVExportManager()
+        
         # MySQL integration
         self.use_mysql = use_mysql
         self.mysql_trainer = None
@@ -420,7 +556,12 @@ ACCOUNT VALUE TIERS:
 - INR 100-500 cr: Score 0.8
 - INR >500 cr: Score 1.0
 
-You can score leads, provide rankings, and suggest prioritization strategies using real database data.
+CSV EXPORT CAPABILITY:
+- For lead queries that return multiple results, you can offer CSV download
+- Users can export filtered lead lists for external analysis
+- CSV files include all relevant lead data with user-friendly column names
+
+You can score leads, provide rankings, suggest prioritization strategies, and export data to CSV using real database data.
             """
         
         return base_prompt + """
@@ -432,6 +573,7 @@ Instructions:
 - Be concise but thorough in your explanations
 - For lead scoring queries, use the MySQL database when available
 - Use comprehensive scoring logic for new lead evaluations
+- Offer CSV export for multi-lead results when appropriate
         """
 
     def train_model_from_database(self, force_retrain=False):
@@ -516,7 +658,7 @@ Instructions:
             query = "SELECT * FROM nx_op_ld_ai_lead360"
             if where_conditions:
                 query += " WHERE " + " AND ".join(where_conditions)
-            query += " LIMIT 20"
+            query += " LIMIT 50"  # Increased limit for CSV export
             
             print(f"🔍 Debug Query: {query}")
             print(f"🔍 Debug Params: {params}")
@@ -534,16 +676,19 @@ Instructions:
             return {"error": f"Database query failed: {str(e)}"}
 
     def generate_response(self, user_input, history=None, use_context=True):
-        """Generate response with context awareness and MySQL lead scoring"""
+        """Generate response with context awareness, MySQL lead scoring, and CSV export"""
         try:
             # PRIORITY 1: Handle MySQL-specific commands first
             if self.use_mysql and any(keyword in user_input.lower() for keyword in 
                                      ['train model', 'score lead', 'prospect', 'top leads', 'database']):
                 return self._handle_mysql_commands(user_input)
             
-            # PRIORITY 2: Handle lead-related queries with database integration
+            # PRIORITY 2: Handle lead-related queries with database integration and CSV export
             if self.use_mysql and any(keyword in user_input.lower() for keyword in 
-                                    ['lead', 'priority', 'rank', 'beat', 'turnover', 'intent']):
+                                    ['lead', 'priority', 'rank', 'beat', 'turnover', 'intent', 'active leads', 'csv', 'download', 'export']):
+                
+                # Check for CSV export requests
+                export_requested = any(term in user_input.lower() for term in ['csv', 'download', 'export', 'file'])
                 
                 # Try to extract prospect ID first
                 prospect_id = self._extract_prospect_id(user_input)
@@ -558,16 +703,16 @@ Instructions:
                 
                 # Try to extract filtering criteria for existing leads
                 criteria = self._extract_lead_criteria(user_input)
-                if criteria:
+                if criteria or any(term in user_input.lower() for term in ['active leads', 'all leads']):
                     result = self.get_database_leads_by_criteria(criteria)
                     if result.get("status") == "success":
-                        return self._format_leads_list_response(result["leads"], criteria)
+                        return self._format_leads_list_response(result["leads"], criteria, export_csv=export_requested)
                 
                 # For general lead queries, get top leads
                 if any(term in user_input.lower() for term in ['best', 'top', 'highest', 'priority']):
-                    result = self.get_top_leads(10)
+                    result = self.get_top_leads(20)  # Increased for CSV export
                     if result.get("status") == "success":
-                        return self._format_top_leads_response(result["top_leads"])
+                        return self._format_top_leads_response(result["top_leads"], export_csv=export_requested)
 
             # PRIORITY 3: Regular LLM response for non-lead queries
             return self._generate_regular_response(user_input, history, use_context)
@@ -652,15 +797,13 @@ Instructions:
             numbers = re.findall(r'\d+', user_input)
             limit = int(numbers[0]) if numbers else 10
             
+            # Check for CSV export request
+            export_csv = any(term in user_input_lower for term in ['csv', 'download', 'export'])
+            
             result = self.get_top_leads(limit)
             if result.get("status") == "success":
                 leads = result["top_leads"]
-                response = f"🏆 **Top {len(leads)} Leads:**\n\n"
-                for i, lead in enumerate(leads, 1):
-                    response += f"{i}. **{lead['prospect_id']}** - Score: {lead['predicted_score']:.2f}\n"
-                    response += f"   Beat Tag: {lead['input_data']['beat_tag']}\n"
-                    response += f"   Turnover: {lead['input_data']['turnover']}\n\n"
-                return response
+                return self._format_top_leads_response(leads, export_csv=export_csv)
             else:
                 return f"❌ Failed to get top leads: {result.get('error')}"
         
@@ -999,8 +1142,8 @@ Instructions:
         
         return response
 
-    def _format_leads_list_response(self, leads: list, criteria: dict) -> str:
-        """Format leads list response"""
+    def _format_leads_list_response(self, leads: list, criteria: dict, export_csv: bool = False) -> str:
+        """Format leads list response with optional CSV export"""
         if not leads:
             return f"❌ No leads found matching criteria: {criteria}"
         
@@ -1013,7 +1156,8 @@ Instructions:
             response += f" matching criteria ({', '.join(criteria_text)})"
         response += ":**\n\n"
         
-        for i, lead in enumerate(leads[:10], 1):
+        # Show preview of leads (first 5)
+        for i, lead in enumerate(leads[:5], 1):
             response += f"{i}. **{lead['prospectId']}**\n"
             response += f"   Beat Tag: {lead['beat_tag']}\n"
             response += f"   Turnover: {lead['turnover']}\n"
@@ -1021,18 +1165,81 @@ Instructions:
             response += f"   Profile Score: {lead['lead_profile_score']}/100\n"
             response += f"   Location: {lead['address'][:50]}...\n\n"
         
-        if len(leads) > 10:
-            response += f"... and {len(leads) - 10} more leads\n"
+        if len(leads) > 5:
+            response += f"... and {len(leads) - 5} more leads\n\n"
+        
+        # Handle CSV export
+        if export_csv or len(leads) > 10:
+            try:
+                query_type = "filtered_leads"
+                if criteria:
+                    query_type = "_".join([f"{k}_{v}" for k, v in criteria.items()])
+                
+                csv_result = self.csv_manager.create_csv_download_response(leads, query_type, criteria)
+                
+                if csv_result["status"] == "success":
+                    response += f"📊 **CSV Export Available:**\n"
+                    response += f"- File: `{csv_result['filename']}`\n"
+                    response += f"- Records: {csv_result['record_count']}\n"
+                    response += f"- Location: `{csv_result['csv_path']}`\n\n"
+                    response += "💡 *The CSV file has been generated and saved locally. You can find it in the downloads directory for further analysis.*"
+                else:
+                    response += f"❌ CSV Export Failed: {csv_result['message']}"
+            except Exception as e:
+                response += f"❌ CSV Export Error: {str(e)}"
+        else:
+            response += "\n💡 *For CSV export of these results, add 'CSV' or 'download' to your query.*"
         
         return response
 
-    def _format_top_leads_response(self, leads: list) -> str:
-        """Format top leads response"""
+    def _format_top_leads_response(self, leads: list, export_csv: bool = False) -> str:
+        """Format top leads response with optional CSV export"""
         response = f"🏆 **Top {len(leads)} Leads by Predicted Score:**\n\n"
-        for i, lead in enumerate(leads, 1):
-            response += f"{i}. **{lead['prospect_id']}** - Score: {lead['predicted_score']:.2f}\n"
+        
+        # Add priority levels to leads for better CSV data
+        enriched_leads = []
+        for lead in leads:
+            score = lead['predicted_score']
+            if score >= 4.0:
+                priority = "URGENT"
+            elif score >= 3.0:
+                priority = "HIGH"
+            elif score >= 2.0:
+                priority = "MEDIUM"
+            else:
+                priority = "LOW"
+            
+            enriched_lead = lead.copy()
+            enriched_lead['priority_level'] = priority
+            enriched_leads.append(enriched_lead)
+        
+        # Show preview
+        for i, lead in enumerate(leads[:10], 1):
+            score = lead['predicted_score']
+            priority_emoji = "🔥" if score >= 4.0 else "⚡" if score >= 3.0 else "📈" if score >= 2.0 else "📋"
+            
+            response += f"{i}. {priority_emoji} **{lead['prospect_id']}** - Score: {score:.2f}\n"
             response += f"   Beat Tag: {lead['input_data']['beat_tag']}\n"
             response += f"   Turnover: {lead['input_data']['turnover']}\n\n"
+        
+        # Handle CSV export
+        if export_csv or len(leads) > 10:
+            try:
+                csv_result = self.csv_manager.create_csv_download_response(enriched_leads, "top_leads")
+                
+                if csv_result["status"] == "success":
+                    response += f"📊 **CSV Export Available:**\n"
+                    response += f"- File: `{csv_result['filename']}`\n"
+                    response += f"- Records: {csv_result['record_count']}\n"
+                    response += f"- Location: `{csv_result['csv_path']}`\n\n"
+                    response += "💡 *The CSV file contains all leads with AI predicted scores and priority levels for your analysis.*"
+                else:
+                    response += f"❌ CSV Export Failed: {csv_result['message']}"
+            except Exception as e:
+                response += f"❌ CSV Export Error: {str(e)}"
+        else:
+            response += "\n💡 *For CSV export of these results, add 'CSV' or 'download' to your query.*"
+        
         return response
 
     def get_relevant_context(self, query, k=3):
@@ -1071,13 +1278,34 @@ Instructions:
         """Score a lead using the enhanced scoring engine"""
         return self.lead_scorer.calculate_comprehensive_lead_score(lead_data)
 
-# Enhanced creation functions with MySQL support
+    def export_leads_to_csv(self, query_type: str = "leads", limit: int = 50) -> str:
+        """Export leads directly to CSV"""
+        if not self.use_mysql or not self.mysql_trainer:
+            return "❌ MySQL integration not enabled"
+        
+        try:
+            # Get all leads for export
+            query = f"SELECT * FROM nx_op_ld_ai_lead360 LIMIT {limit}"
+            df = pd.read_sql(query, self.mysql_trainer.db_manager.engine)
+            leads_data = df.to_dict('records')
+            
+            csv_result = self.csv_manager.create_csv_download_response(leads_data, query_type)
+            
+            if csv_result["status"] == "success":
+                return f"✅ **CSV Export Successful:**\n- File: `{csv_result['filename']}`\n- Records: {csv_result['record_count']}\n- Location: `{csv_result['csv_path']}`"
+            else:
+                return f"❌ Export failed: {csv_result['message']}"
+                
+        except Exception as e:
+            return f"❌ Export error: {str(e)}"
+
+# Enhanced creation functions with MySQL support and CSV export
 def create_lead_prioritization_assistant(use_mysql=True, db_config=None):
-    """Create lead prioritization assistant with optional MySQL integration"""
+    """Create lead prioritization assistant with optional MySQL integration and CSV export"""
     assistant = ContextAwareAssistant(use_mysql=use_mysql, db_config=db_config)
     
     assistant.create_system_prompt(
-        domain_context="lead prioritization and scoring with beat plan tagging and MySQL integration",
+        domain_context="lead prioritization and scoring with beat plan tagging, MySQL integration, and CSV export capabilities",
         personality="analytical and data-driven",
         expertise_areas=[
             "buyer behavior analysis", 
@@ -1088,7 +1316,9 @@ def create_lead_prioritization_assistant(use_mysql=True, db_config=None):
             "beat plan tag analysis",
             "account value assessment",
             "MySQL database integration",
-            "comprehensive lead scoring"
+            "comprehensive lead scoring",
+            "data export and analysis",
+            "CSV file generation"
         ]
     )
     
@@ -1113,7 +1343,7 @@ def create_code_assistant():
     return assistant
 
 def generate_response(user_input, recent_messages=None, assistant_type="lead_priority", use_context=True, use_mysql=True):
-    """Enhanced function to generate responses with MySQL integration"""
+    """Enhanced function to generate responses with MySQL integration and CSV export"""
     if assistant_type == "code":
         assistant = create_code_assistant()
     elif assistant_type == "support":
@@ -1141,6 +1371,14 @@ def score_prospect(prospect_id: str):
     except Exception as e:
         return f"Scoring failed: {str(e)}"
 
+def export_active_leads_csv():
+    """Quick function to export active leads to CSV"""
+    try:
+        assistant = create_lead_prioritization_assistant(use_mysql=True)
+        return assistant.export_leads_to_csv("active_leads", limit=100)
+    except Exception as e:
+        return f"Export failed: {str(e)}"
+
 if __name__ == "__main__":
     assistant = create_lead_prioritization_assistant(use_mysql=True)
     
@@ -1148,7 +1386,9 @@ if __name__ == "__main__":
         "train model",
         "score lead abc123", 
         "show me top 5 leads",
-        "leads with Active beat tag",
+        "Active Leads",  # This should now trigger CSV export
+        "leads with Active beat tag download CSV",
+        "export all leads to CSV",
         "Score this new lead: Active beat tag, 100cr turnover, 85 intent score",
         "Rate this ERV winback lead with 500cr turnover and 90 intent score",
         "Analyze this hot lead: 200cr revenue, meeting next week, 75 intent score"
